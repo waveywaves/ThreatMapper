@@ -1,0 +1,135 @@
+version: "3.7"
+
+x-uffizzi:
+    ingress:
+        service: deepfence-router
+        port: 80
+
+services:
+  deepfence-init-container:
+    container_name: df-init-container
+    image: deepfenceio/deepfence_init_ce:1.4.1
+    entrypoint: "/bin/sh"
+    command:
+      - "-c"
+      - "/usr/local/bin/entrypoint.sh & sleep infinte"
+
+  deepfence-postgres:
+    container_name: deepfence-postgres
+    image: deepfenceio/deepfence_postgres_ce:1.4.1
+    # volumes:
+      # - deepfence_data:/data:rw
+
+  deepfence-redis:
+    container_name: deepfence-redis
+    image: deepfenceio/deepfence_redis_ce:1.4.1
+    environment:
+      INITIALIZE_REDIS: "Y"
+
+  deepfence-fetcher:
+    container_name: deepfence-fetcher
+    image: deepfenceio/deepfence_fetcher_ce:1.4.1
+    # volumes:
+    #   - deepfence_data:/data
+
+  deepfence-topology:
+    container_name: deepfence-topology
+    image: deepfenceio/deepfence_discovery_ce:1.4.1
+    ports:
+      - "8004:8004"
+    command: topology
+
+  deepfence-console-agent:
+    container_name: deepfence-console-agent
+    image: deepfenceio/deepfence_agent_ce:1.4.1
+    deploy:
+      resources:
+        limits:
+          memory: 1000M
+    environment:
+    - MGMT_CONSOLE_URL=127.0.0.1
+    - MGMT_CONSOLE_PORT=8443
+    # volumes:
+    # - /sys/kernel/debug:/sys/kernel/debug:rw
+    # - /var/log/fenced
+    # - /var/run/docker.sock:/var/run/docker.sock
+    # - /var/lib/docker/:/fenced/mnt/host/var/lib/docker/:rw
+    # - /:/fenced/mnt/host/:ro
+    privileged: true
+
+  deepfence-es:
+    container_name: deepfence-es-master
+    image: deepfenceio/deepfence_elastic_ce:1.4.1
+    environment:
+      - DF_PROG_NAME="es_master"
+      - node.name=deepfence-es
+      #- discovery.seed_hosts=deepfence-es-slave1,deepfence-es-slave2
+      - cluster.initial_master_nodes=localhost
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    deploy:
+      resources:
+        limits:
+          memory: 1000M
+
+  deepfence-router:
+    container_name: deepfence-router
+    image: deepfenceio/deepfence_router_ce:1.4.1
+    ports:
+      - "80:80"
+      - "443:443"
+
+  deepfence-internal-router:
+    container_name: deepfence-internal-router
+    image: deepfenceio/deepfence_router_ce:1.4.1
+    ports:
+      - "127.0.0.1:8443:443"
+    environment:
+      ENABLE_AUTH: "false"
+
+  deepfence-api:
+    container_name: deepfence-api
+    image: deepfenceio/deepfence_api_ce:1.4.1
+    environment:
+      ELASTICSEARCH_SCHEME: "http"
+    entrypoint: /app/code/dockerify/api/entrypoint.sh
+
+  deepfence-celery:
+    container_name: deepfence-celery
+    image: deepfenceio/deepfence_api_ce:1.4.1
+    entrypoint: /app/code/dockerify/celery/entrypoint.sh
+    restart: on-failure
+
+  deepfence-backend:
+    container_name: deepfence-backend
+    image: deepfenceio/deepfence_api_ce:1.4.1
+    entrypoint: /app/code/dockerify/backend/entrypoint.sh
+
+  deepfence-ui:
+    container_name: deepfence-ui
+    image: deepfenceio/deepfence_ui_ce:1.4.1
+
+  deepfence-diagnosis:
+    container_name: deepfence-diagnosis
+    image: deepfenceio/deepfence_diagnosis_ce:1.4.1
+
+  deepfence-vulnerability-mapper:
+    container_name: deepfence-vulnerability-mapper
+    image: deepfenceio/deepfence_vulnerability_mapper_ce:1.4.1
+
+  deepfence-secret-scanner:
+    container_name: deepfence-secret-scanner
+    image: deepfenceio/deepfence_secret_scanner_ce:1.4.1
+    entrypoint: /home/deepfence/usr/SecretScanner
+    command: ["-config-path","/home/deepfence/usr", "-http-port", "8011"]
+        
+  deepfence-package-scanner:
+    container_name: deepfence-package-scanner
+    image: deepfenceio/deepfence_package_scanner_ce:1.4.1
+    environment:
+      MGMT_CONSOLE_URL: "deepfence-internal-router"
+      MGMT_CONSOLE_PORT: "443"
+      PACKAGE_SCAN_CONCURRENCY: "5"
+    entrypoint: /usr/local/bin/package-scanner
+    command: ["-mode", "http-server", "-port", "8005"]
